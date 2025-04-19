@@ -9,7 +9,7 @@
 include_once ("Url.php");
 include_once("Controle.php");
 
-// crée l'objet d'accès aux informations de l'URL qui sollicite l'API.
+// crée l'objet d'accès aux informations de l'URL qui sollicite l'API
 $url = Url::getInstance();
 // crée l'objet d'accès au contrôleur
 $controle = new Controle();
