@@ -45,9 +45,9 @@ class MyAccessBDD extends AccessBDD {
             case "rayon" :
             case "etat" :
                 // select portant sur une table contenant juste id et libelle
-                return $this->selectTableSimple($table);
+                return $this->selectTableSimple($table, $champs);
             case "" :
-                // return $this->uneFonction(parametres);
+                 // return $this->uneFonction(parametres);
             default:
                 // cas général
                 return $this->selectTuplesOneTable($table, $champs);
@@ -63,12 +63,30 @@ class MyAccessBDD extends AccessBDD {
      */	
     protected function traitementInsert(string $table, ?array $champs) : ?int{
         switch($table){
-            case "" :
-                // return $this->uneFonction(parametres);
+            case "document" :
+                 return $this->insertDocument($champs); // ajout d'un document
             default:                    
                 // cas général
                 return $this->insertOneTupleOneTable($table, $champs);	
         }
+    }
+    
+    /**
+    * Insère un document dans la table "document"
+    * @param array|null $champs
+    * @return int|null ID du document inséré ou null en cas d'erreur
+    */
+    private function insertDocument(?array $champs): ?int {
+        if (empty($champs) || !isset($champs['titre'])) {
+            return null;
+        }
+
+        $requete = "INSERT INTO document (id, titre, idRayon, idPublic, idGenre, image) 
+                    VALUES (:id, :titre, :idRayon, :idPublic, :idGenre, :image)";
+
+        $result = $this->conn->updateBDD($requete, $champs);
+
+        return $result ? $champs['id'] : null;
     }
     
     /**
