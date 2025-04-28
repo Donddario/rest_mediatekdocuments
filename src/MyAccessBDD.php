@@ -10,8 +10,7 @@ include_once("AccessBDD.php");
  * - ajouter un 'case' dans un des switch des fonctions redéfinies 
  * - appeler la nouvelle fonction dans ce 'case'
  */
-class MyAccessBDD extends AccessBDD {
-	    
+class MyAccessBDD extends AccessBDD {    
     /**
      * constructeur qui appelle celui de la classe mère
      */
@@ -22,7 +21,6 @@ class MyAccessBDD extends AccessBDD {
             throw $e;
         }
     }
-
     /**
      * demande de recherche
      * @param string $table
@@ -40,6 +38,10 @@ class MyAccessBDD extends AccessBDD {
                 return $this->selectAllRevues();
             case "exemplaire" :
                 return $this->selectExemplairesRevue($champs);
+            case "commandedocument/livre" :
+                return $this->selectCommandesLivres();    
+            case "commandedocument/dvd" :
+                return $this->selectCommandesDvd();    
             case "genre" :
             case "public" :
             case "rayon" :
@@ -47,13 +49,12 @@ class MyAccessBDD extends AccessBDD {
                 // select portant sur une table contenant juste id et libelle
                 return $this->selectTableSimple($table, $champs);
             case "" :
-                 // return $this->uneFonction(parametres);
+                // return $this->uneFonction(parametres);
             default:
                 // cas général
                 return $this->selectTuplesOneTable($table, $champs);
         }	
     }
-
     /**
      * demande d'ajout (insert)
      * @param string $table
@@ -64,31 +65,34 @@ class MyAccessBDD extends AccessBDD {
     protected function traitementInsert(string $table, ?array $champs) : ?int{
         switch($table){
             case "document" :
-                 return $this->insertDocument($champs); // ajout d'un document
+                return $this->insertDocument($champs); // Ajout d'un document
             default:                    
                 // cas général
                 return $this->insertOneTupleOneTable($table, $champs);	
         }
     }
-    
     /**
-    * Insère un document dans la table "document"
-    * @param array|null $champs
-    * @return int|null ID du document inséré ou null en cas d'erreur
-    */
+     * Insère un document dans la table "document"
+     * @param array|null $champs
+     * @return int|null ID du document inséré ou null en cas d'erreur
+     */
     private function insertDocument(?array $champs): ?int {
-        if (empty($champs) || !isset($champs['titre'])) {
+        if (empty($champs)) {
             return null;
         }
 
+        if (!isset($champs['titre'])) {
+            return null; // Vérifie que les champs obligatoires sont bien présents
+        }
+
+        // Création de la requête SQL d'insertion
         $requete = "INSERT INTO document (id, titre, idRayon, idPublic, idGenre, image) 
                     VALUES (:id, :titre, :idRayon, :idPublic, :idGenre, :image)";
 
         $result = $this->conn->updateBDD($requete, $champs);
 
-        return $result ? $champs['id'] : null;
+        return $result ? $champs['id'] : null; // Retourne l'ID inséré ou null si échec
     }
-    
     /**
      * demande de modification (update)
      * @param string $table
@@ -98,14 +102,23 @@ class MyAccessBDD extends AccessBDD {
      * @override
      */	
     protected function traitementUpdate(string $table, ?string $id, ?array $champs) : ?int{
-        switch($table){
-            case "" :
-                // return $this->uneFonction(parametres);
-            default:                    
-                // cas général
-                return $this->updateOneTupleOneTable($table, $id, $champs);
-        }	
+        // Pour les updates par numéro (exemplaire)
+        if ($table === "exemplaire" && $id === "numero" && isset($champs["numero"])) {
+            return $this->updateExemplaireParNumero($champs);
+        }
+
+        // Cas général
+        return $this->updateOneTupleOneTable($table, $id, $champs);	
     }  
+    private function updateExemplaireParNumero($champs) {
+        if (!isset($champs['idEtat']) || !isset($champs['numero'])) {
+            return false;
+        }
+
+        $requete = "UPDATE exemplaire SET idEtat = :idEtat WHERE numero = :numero";
+
+        return $this->conn->updateBDD($requete, $champs);
+    }
     
     /**
      * demande de suppression (delete)
@@ -133,7 +146,7 @@ class MyAccessBDD extends AccessBDD {
     private function selectTuplesOneTable(string $table, ?array $champs) : ?array{
         if(empty($champs)){
             // tous les tuples d'une table
-            $requete = "select * from $table;";
+            $requete = "select * from $table;";           
             return $this->conn->queryBDD($requete);  
         }else{
             // tuples spécifiques d'une table
@@ -141,8 +154,7 @@ class MyAccessBDD extends AccessBDD {
             foreach ($champs as $key => $value){
                 $requete .= "$key=:$key and ";
             }
-            // (enlève le dernier and)
-            $requete = substr($requete, 0, strlen($requete)-5);	          
+            $requete = substr($requete, 0, strlen($requete)-5);	         
             return $this->conn->queryBDD($requete, $champs);
         }
     }	
@@ -181,7 +193,7 @@ class MyAccessBDD extends AccessBDD {
      * @param array|null $champs 
      * @return int|null nombre de tuples modifiés (0 ou 1) ou null si erreur
      */	
-    private function updateOneTupleOneTable(string $table, ?string $id, ?array $champs) : ?int {
+    private function updateOneTupleOneTable(string $table, ?string $id, ?array $champs) : ?int {            
         if(empty($champs)){
             return null;
         }
@@ -196,8 +208,8 @@ class MyAccessBDD extends AccessBDD {
         // (enlève la dernière virgule)
         $requete = substr($requete, 0, strlen($requete)-1);				
         $champs["id"] = $id;
-        $requete .= " where id=:id;";		
-        return $this->conn->updateBDD($requete, $champs);	        
+        $requete .= " where id=:id;";	
+        return $this->conn->updateBDD($requete, $champs);
     }
     
     /**
@@ -221,13 +233,14 @@ class MyAccessBDD extends AccessBDD {
     }
  
     /**
-     * récupère toutes les lignes d'une table simple (qui contient juste id et libelle)
+     * Récupère toutes les lignes d'une table simple ou un seul élément filtré par libelle
      * @param string $table
+     * @param array|null $champs
      * @return array|null
      */
-    private function selectTableSimple(string $table) : ?array{
-        $requete = "select * from $table order by libelle;";		
-        return $this->conn->queryBDD($requete);	    
+    private function selectTableSimple(string $table, ?array $champs = null) : ?array{
+        $requete = "SELECT * FROM $table ORDER BY libelle;";
+        return $this->conn->queryBDD($requete);	 	    
     }
     
     /**
@@ -235,13 +248,18 @@ class MyAccessBDD extends AccessBDD {
      * @return array|null
      */
     private function selectAllLivres() : ?array{
-        $requete = "Select l.id, l.ISBN, l.auteur, d.titre, d.image, l.collection, ";
-        $requete .= "d.idrayon, d.idpublic, d.idgenre, g.libelle as genre, p.libelle as lePublic, r.libelle as rayon ";
-        $requete .= "from livre l join document d on l.id=d.id ";
-        $requete .= "join genre g on g.id=d.idGenre ";
-        $requete .= "join public p on p.id=d.idPublic ";
-        $requete .= "join rayon r on r.id=d.idRayon ";
-        $requete .= "order by titre ";		
+        $columns = "l.id, l.ISBN, l.auteur, d.titre, d.image, l.collection, 
+                d.idrayon, d.idpublic, d.idgenre, 
+                g.libelle as genre, p.libelle as lePublic, r.libelle as rayon";
+
+        $joins = "from livre l 
+              join document d on l.id = d.id 
+              join genre g on g.id = d.idGenre 
+              join public p on p.id = d.idPublic 
+              join rayon r on r.id = d.idRayon";
+
+        $requete = "SELECT $columns $joins ORDER BY d.titre"; 
+
         return $this->conn->queryBDD($requete);
     }	
 
@@ -280,19 +298,44 @@ class MyAccessBDD extends AccessBDD {
      * @param array|null $champs 
      * @return array|null
      */
-    private function selectExemplairesRevue(?array $champs) : ?array{
-        if(empty($champs)){
+    private function selectExemplairesRevue(?array $champs) : ?array {
+        if (empty($champs) || !array_key_exists('id', $champs)) {
             return null;
         }
-        if(!array_key_exists('id', $champs)){
-            return null;
-        }
+
         $champNecessaire['id'] = $champs['id'];
-        $requete = "Select e.id, e.numero, e.dateAchat, e.photo, e.idEtat ";
-        $requete .= "from exemplaire e join document d on e.id=d.id ";
-        $requete .= "where e.id = :id ";
-        $requete .= "order by e.dateAchat DESC";
+
+        $requete = "SELECT e.id, e.numero, e.dateAchat, e.photo, e.idEtat ";
+        $requete .= "FROM exemplaire e JOIN document d ON e.id = d.id ";
+        $requete .= "WHERE e.id = :id ";
+        $requete .= "ORDER BY e.dateAchat DESC";
+
         return $this->conn->queryBDD($requete, $champNecessaire);
-    }		    
+    }
     
+    /**
+     * Récupère uniquement les commandes qui concernent des livres
+     * @return array|null
+     */
+    private function selectCommandesLivres() : ?array {
+        $requete = "SELECT cd.*
+                    FROM commandedocument cd
+                    JOIN livres_dvd ld ON cd.idLivreDvd = ld.id
+                    JOIN livre l ON ld.id = l.id";
+        
+        return $this->conn->queryBDD($requete);
+    }
+
+    /**
+     * Récupère uniquement les commandes qui concernent des DVDs
+     * @return array|null
+     */
+    private function selectCommandesDvd() : ?array {
+        $requete = "SELECT cd.*
+                    FROM commandedocument cd
+                    JOIN livres_dvd ld ON cd.idLivreDvd = ld.id
+                    JOIN dvd d ON ld.id = d.id";
+        
+        return $this->conn->queryBDD($requete);
+    }
 }
